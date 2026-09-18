@@ -1,0 +1,94 @@
+version: "3.9"
+
+# ------------------------------------------------------------------
+# Running `docker compose up` will, in order:
+#   1. Pull/build images for each service defined below.
+#   2. Create a private network ("job-net") so containers can reach
+#      each other by SERVICE NAME (e.g. backend talks to "postgres",
+#      not "localhost").
+#   3. Start "postgres" first (backend/ml-service "depends_on" it).
+#   4. Start "ml-service" and "backend".
+#   5. Start "frontend", which is served on http://localhost:3000
+#      and calls the backend at http://localhost:5000/api.
+# ------------------------------------------------------------------
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: job-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jobapp
+      POSTGRES_PASSWORD: jobapp_password
+      POSTGRES_DB: job_recommendation_db
+    ports:
+      - "5433:5432"
+    volumes:
+      # Named volume: keeps DB data even if the container is removed
+      - postgres_data:/var/lib/postgresql/data
+      # Auto-run schema + seed scripts the FIRST time the DB starts
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/1_schema.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/2_seed.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U jobapp -d job_recommendation_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - job-net
+
+  ml-service:
+    build: ./ml-service
+    container_name: job-ml-service
+    restart: unless-stopped
+    ports:
+      - "6100:6100"
+    networks:
+      - job-net
+
+  backend:
+    build: ./backend
+    container_name: job-backend
+    restart: unless-stopped
+    environment:
+      PORT: 5000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: jobapp
+      DB_PASSWORD: jobapp_password
+      DB_NAME: job_recommendation_db
+      JWT_SECRET: replace_this_with_a_long_random_secret
+      JWT_EXPIRES_IN: 7d
+      ML_SERVICE_URL: http://ml-service:6100
+    ports:
+      - "5050:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ml-service:
+        condition: service_started
+    networks:
+      - job-net
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_API_URL: http://localhost:5050/api
+    container_name: job-frontend
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    depends_on:
+      - backend
+    networks:
+      - job-net
+
+# Named volume for durable Postgres data
+volumes:
+  postgres_data:
+
+    # Private network shared by all four services
+networks:
+  job-net:
+    driver: bridge

@@ -1,0 +1,23 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Env files
+.env
+*.env.local
+
+# Build output
+frontend/build/
+
+# Editor/OS
+.vscode/
+.DS_Store
+
+# Docker
+postgres_data/
