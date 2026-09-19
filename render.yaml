@@ -128,11 +128,7 @@ services:
 databases:
 
   - name: job-postgres
-
     plan: free
-
     region: singapore
-
     databaseName: job_recommendation_db
-
-    databaseUser: jobapp
+    user: jobapp
