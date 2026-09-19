@@ -49,6 +49,8 @@ def recommend():
 
 
 if __name__ == "__main__":
-    # 0.0.0.0 so it's reachable from other Docker containers,
-    # not just localhost inside its own container.
+    # NOTE: app.run() is Flask's built-in dev server -- fine for local
+    # testing, but not for production (single-threaded, no concurrency
+    # handling). In Docker, the Dockerfile launches this app via gunicorn
+    # instead (see CMD), so this block only runs on `python app.py` directly.
     app.run(host="0.0.0.0", port=6100, debug=False)

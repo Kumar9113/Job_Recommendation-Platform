@@ -13,7 +13,12 @@ const errorHandler = require('./middleware/errorHandler');
 const app = express();
 
 // ---- Global middleware (runs on every request, in order) ----
-app.use(cors());              // allow the React frontend (different origin) to call this API
+// ALLOWED_ORIGIN restricts CORS to your real frontend domain in production.
+// Leave unset in development to allow any origin.
+const corsOptions = process.env.ALLOWED_ORIGIN
+  ? { origin: process.env.ALLOWED_ORIGIN.split(',').map((s) => s.trim()) }
+  : {};
+app.use(cors(corsOptions)); // allow the React frontend (different origin) to call this API
 app.use(express.json());      // parse JSON request bodies into req.body
 
 // ---- Health check (useful for Docker healthchecks) ----
