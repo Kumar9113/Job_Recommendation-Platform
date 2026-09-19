@@ -580,8 +580,3 @@ See [`ROADMAP.md`](./ROADMAP.md) for the full phased plan with priorities.
 M.Tech, Computer Science & Engineering — IIT Hyderabad
 GitHub: [Kumar9113](https://github.com/Kumar9113)
 
----
-
-## License
-
-This project is intended for educational, research, and portfolio purposes. Add a formal license here if open-sourcing.
