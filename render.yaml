@@ -1,21 +1,9 @@
 services:
 
   # ==========================================================
-  # 1. PostgreSQL
+  # 1. Flask ML Service
   # ==========================================================
   - type: pserv
-    name: job-postgres
-    plan: free
-    region: singapore
-
-    databaseName: job_recommendation_db
-    databaseUser: jobapp
-
-
-  # ==========================================================
-  # 2. Flask ML Service
-  # ==========================================================
-  - type: web
     name: job-ml-service
 
     runtime: docker
@@ -27,13 +15,12 @@ services:
     region: singapore
 
     envVars:
-
       - key: PORT
         value: "6100"
 
 
   # ==========================================================
-  # 3. Node.js / Express Backend
+  # 2. Node.js / Express Backend
   # ==========================================================
   - type: web
     name: job-backend
@@ -105,7 +92,10 @@ services:
       # ------------------------------------------------------
 
       - key: ML_SERVICE_URL
-        value: "http://job-ml-service:6100"
+        fromService:
+          type: pserv
+          name: job-ml-service
+          property: hostport
 
       # ------------------------------------------------------
       # CORS
@@ -116,7 +106,7 @@ services:
 
 
   # ==========================================================
-  # 4. React Frontend
+  # 3. React Frontend
   # ==========================================================
   - type: web
     name: job-frontend
@@ -133,3 +123,19 @@ services:
 
       - key: REACT_APP_API_URL
         sync: false
+
+
+# ============================================================
+# 4. PostgreSQL Database
+# ============================================================
+databases:
+
+  - name: job-postgres
+
+    plan: free
+
+    region: singapore
+
+    databaseName: job_recommendation_db
+
+    databaseUser: jobapp
