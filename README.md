@@ -4,6 +4,12 @@ A full-stack web platform that recommends jobs to users based on their skills, e
 
 > Built as a 4-service architecture: **React** frontend, **Node.js/Express** API, **Python/Flask** ML microservice, and **PostgreSQL** database — all orchestrated with Docker Compose.
 
+## System Overview
+
+![Job Recommendation Platform - System Flow](./FlowGraph.png)
+
+The diagram above shows the complete system architecture, user flow, recommendation pipeline, and Railway deployment flow.
+
 ---
 
 ## Table of Contents
@@ -46,6 +52,7 @@ Step by step, when a logged-in user opens their **Recommendations** page:
 
 ```mermaid
 flowchart LR
+
     subgraph Client
         FE["React Frontend\n(localhost:3001)"]
     end
@@ -64,15 +71,19 @@ flowchart LR
     DB[("PostgreSQL\nusers . profiles . skills\njobs . applications . recommendations")]
 
     FE -- "REST + JWT" --> API
+
     AUTH --> DB
     JOBS --> DB
     REC --> DB
+
     REC -- "POST /recommend\n{user, jobs, topK}" --> ML
     ML -- "ranked jobs + scores" --> REC
+
     TFIDF --> COS
 ```
 
-**Why a separate ML microservice instead of doing this in Node?**
+### Why a separate ML microservice instead of doing this in Node?
+
 scikit-learn (TF-IDF, cosine similarity) is a mature Python ecosystem tool with no equivalent-quality library in Node. Splitting it out also means the ML logic can be redeployed, scaled, or swapped (e.g. for a smarter model later) independently of the main API.
 
 > **Port note:** the ML service runs on **6100**, not 6000. Port 6000 is on the [Fetch spec's blocked-ports list](https://fetch.spec.whatwg.org/#port-blocking) (reserved for X11), so Node's built-in `fetch` refuses to connect to it. This was an early bug in the project — see [Known Limitations](#known-limitations).
@@ -98,23 +109,50 @@ scikit-learn (TF-IDF, cosine similarity) is a mature Python ecosystem tool with 
 
 This is a **content-based, unsupervised** recommender — no labeled training data ("user X liked job Y") is needed.
 
-**1. Build text profiles**
-- *User text* = skills (repeated twice for extra weight) + preferred role + education + bio
-- *Job text* = title (repeated twice) + required skills + category + description
+### 1. Build text profiles
 
-**2. Clean the text** (`preprocessing.py`)
-Lowercase → strip punctuation (keeping `+`/`#` for "C++", "C#") → remove stopwords → tokenize.
+- **User text** = skills (repeated twice for extra weight) + preferred role + education + bio
+- **Job text** = title (repeated twice) + required skills + category + description
 
-**3. Vectorize with TF-IDF**
-All texts (1 user + N jobs) are fit into a single TF-IDF vector space together, so they share the same vocabulary. Each word's weight reflects how *distinctive* it is — common words like "developer" get down-weighted, rare/specific words like "Kubernetes" get up-weighted.
+### 2. Clean the text
 
-**4. Score with Cosine Similarity**
-The user's vector is compared to every job's vector. The result is a score from **0 (unrelated) to 1 (near-identical)**.
+`preprocessing.py` performs:
 
-**5. Rank & explain**
-Jobs are sorted by score, the top-K returned, and each is annotated with which of the user's skills actually appear in that job's required skills — this is what powers the "Skills matched: Python, SQL" explanation on the frontend.
+```text
+Lowercase
+   ↓
+Strip punctuation
+   ↓
+Keep + / # for C++ and C#
+   ↓
+Remove stopwords
+   ↓
+Tokenize
+```
 
-**Why this approach over a deep learning model?** It's explainable (every score traces back to real words), needs no training data, and is fast even with a small job catalog — deep learning models need much more data to beat a well-tuned TF-IDF baseline at this scale.
+### 3. Vectorize with TF-IDF
+
+All texts (1 user + N jobs) are fit into a single TF-IDF vector space together, so they share the same vocabulary.
+
+Each word's weight reflects how **distinctive** it is — common words like "developer" get down-weighted, while rare/specific words like "Kubernetes" get up-weighted.
+
+### 4. Score with Cosine Similarity
+
+The user's vector is compared to every job's vector.
+
+The result is a score from **0 (unrelated) to 1 (near-identical)**.
+
+### 5. Rank & explain
+
+Jobs are sorted by score, the top-K returned, and each is annotated with which of the user's skills actually appear in the job's required skills.
+
+This powers the frontend explanation:
+
+> Skills matched: Python, SQL
+
+### Why this approach over a deep learning model?
+
+It's explainable (every score traces back to real words), needs no training data, and is fast even with a small job catalog — deep learning models need much more data to beat a well-tuned TF-IDF baseline at this scale.
 
 ---
 
@@ -124,7 +162,9 @@ Jobs are sorted by score, the top-K returned, and each is annotated with which o
 
 ```bash
 git clone <your-repo-url>
+
 cd job-recommendation-platform
+
 docker compose up --build
 ```
 
@@ -161,11 +201,15 @@ npm install
 npm start                # runs on :3000
 ```
 
-### Full curl walkthrough (register, login, profile, skills, recommendations, apply)
+---
+
+## Full curl walkthrough
 
 All commands below assume **Docker Compose** (backend on `5050`). If you're running the backend manually instead, swap `5050` for `5000`.
 
-Every protected endpoint needs `Authorization: Bearer $TOKEN`. Save the token from register/login into a shell variable so you don't have to paste it into every command:
+Every protected endpoint needs `Authorization: Bearer <JWT>`.
+
+### Save the token
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:5050/api/auth/login \
@@ -176,102 +220,138 @@ TOKEN=$(curl -s -X POST http://localhost:5050/api/auth/login \
 echo $TOKEN
 ```
 
-**1. Register a new user**
+### 1. Register a new user
+
 ```bash
 curl -s -X POST http://localhost:5050/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"you@example.com","password":"password123","fullName":"Your Name"}'
 ```
 
-**2. Log in** (if you already have an account)
+### 2. Log in
+
 ```bash
 curl -s -X POST http://localhost:5050/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"you@example.com","password":"password123"}'
 ```
 
-**3. Get your profile**
+### 3. Get your profile
+
 ```bash
 curl -s http://localhost:5050/api/users/me \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**4. Update your profile**
+### 4. Update your profile
+
 ```bash
 curl -s -X PUT http://localhost:5050/api/users/me \
-  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"education":"BTech","experienceYears":1.5,"preferredRole":"Backend Developer","location":"Hyderabad","bio":"Backend developer who loves Python and SQL."}'
 ```
 
-**5. List master skills**
+### 5. List master skills
+
 ```bash
 curl -s http://localhost:5050/api/skills
 ```
 
-**6. Add a skill to your profile**
+### 6. Add skills
+
 ```bash
 curl -s -X POST http://localhost:5050/api/users/skills \
-  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"skillName":"Python"}'
 
 curl -s -X POST http://localhost:5050/api/users/skills \
-  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"skillName":"SQL"}'
 ```
 
-**7. Remove a skill** (replace `:skillId` with the `skillId` returned from step 6)
+### 7. Remove a skill
+
+Replace `:skillId` with the `skillId` returned from the add-skill request.
+
 ```bash
 curl -s -X DELETE http://localhost:5050/api/users/skills/1 \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**8. Search / browse jobs**
+### 8. Search / browse jobs
+
 ```bash
 curl -s "http://localhost:5050/api/jobs?limit=5"
+```
 
-# with filters
+With filters:
+
+```bash
 curl -s "http://localhost:5050/api/jobs?skill=Python&location=Hyderabad&minExperience=0&page=1&limit=5"
 ```
 
-**9. Get one job's details**
+### 9. Get one job's details
+
 ```bash
 curl -s http://localhost:5050/api/jobs/1
 ```
 
-**10. Get ranked recommendations**
+### 10. Get ranked recommendations
+
 ```bash
 curl -s "http://localhost:5050/api/recommendations?topK=5" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**11. Explain why one job matches you**
+### 11. Explain why one job matches you
+
 ```bash
 curl -s http://localhost:5050/api/recommendations/1 \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**12. Apply to a job**
+### 12. Apply to a job
+
 ```bash
 curl -s -X POST http://localhost:5050/api/jobs/1/apply \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**13. List your applications**
+### 13. List your applications
+
 ```bash
 curl -s http://localhost:5050/api/applications \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**14. Update an application's status** (replace `:id` with the application `id` from step 13)
+### 14. Update an application's status
+
+Replace `1` with the application ID from step 13.
+
 ```bash
 curl -s -X PUT http://localhost:5050/api/applications/1 \
-  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"status":"shortlisted"}'
 ```
 
-Valid `status` values: `applied`, `shortlisted`, `rejected`, `hired` (check `applications.controller.js` if this list has changed).
+Valid `status` values:
 
-**Expected error responses**, useful when testing:
+```text
+applied
+shortlisted
+rejected
+hired
+```
+
+Check `applications.controller.js` if this list has changed.
+
+---
+
+## Expected Error Responses
 
 | Scenario | Status |
 |---|---|
@@ -313,18 +393,39 @@ All protected routes require `Authorization: Bearer <JWT>`.
 
 ## Project Structure
 
-```
+```text
 job-recommendation-platform/
-├── frontend/            React app (Login, Register, Dashboard, JobSearch, JobDetails, Applications, Recommendations)
-├── backend/              Express API (auth, jobs, applications, recommendations, skills)
-│   └── src/
-│       ├── controllers/  Business logic per resource
-│       ├── routes/       Route definitions
-│       ├── middleware/   auth, error handling
-│       └── services/     mlService.js — the only file that talks to the ML microservice
-├── ml-service/           Flask app: preprocessing -> TF-IDF -> cosine similarity
-├── database/             schema.sql + seed.sql
-└── docker-compose.yml    Wires all 4 services together
+
+├── FlowGraph.png
+├── frontend/
+│   └── React app
+│       ├── Login
+│       ├── Register
+│       ├── Dashboard
+│       ├── JobSearch
+│       ├── JobDetails
+│       ├── Applications
+│       └── Recommendations
+│
+├── backend/
+│   └── Express API
+│       └── src/
+│           ├── controllers/
+│           ├── routes/
+│           ├── middleware/
+│           └── services/
+│               └── mlService.js
+│
+├── ml-service/
+│   └── Flask app
+│       ├── preprocessing.py
+│       └── recommendation engine
+│
+├── database/
+│   ├── schema.sql
+│   └── seed.sql
+│
+└── docker-compose.yml
 ```
 
 ---
@@ -333,7 +434,7 @@ job-recommendation-platform/
 
 See [`ROADMAP.md`](./ROADMAP.md) for the full phased plan with priorities.
 
-**Quick view:**
+### Quick view
 
 | Phase | Focus | Status |
 |---|---|---|
