@@ -8,7 +8,7 @@ A full-stack web platform that recommends jobs to users based on their skills, e
 
 ![Job Recommendation Platform - System Flow](./FlowGraph.png)
 
-The diagram above shows the complete system architecture, user flow, recommendation pipeline, and Railway deployment flow.
+The diagram above shows the complete system architecture, the end-to-end user flow, how the recommendation algorithm scores jobs, and the deployment flow.
 
 ---
 
@@ -19,11 +19,17 @@ The diagram above shows the complete system architecture, user flow, recommendat
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [The Recommendation Engine, Explained](#the-recommendation-engine-explained)
+- [Recommendation Evaluation](#recommendation-evaluation)
 - [Getting Started](#getting-started)
+- [Full Curl Walkthrough](#full-curl-walkthrough)
+- [Expected Error Responses](#expected-error-responses)
 - [API Reference](#api-reference)
 - [Project Structure](#project-structure)
+- [Deployment](#deployment)
 - [Roadmap](#roadmap)
 - [Known Limitations](#known-limitations)
+- [Author](#author)
+- [License](#license)
 
 ---
 
@@ -57,7 +63,7 @@ flowchart LR
         FE["React Frontend\n(localhost:3001)"]
     end
 
-    subgraph API["Node.js / Express Backend (port 5000)"]
+    subgraph API["Node.js / Express Backend (port 5050)"]
         AUTH["Auth\nJWT + bcrypt"]
         JOBS["Jobs & Applications"]
         REC["Recommendations Controller"]
@@ -81,6 +87,13 @@ flowchart LR
 
     TFIDF --> COS
 ```
+
+| Service | Technology | Responsibility |
+|---|---|---|
+| Frontend | React | User interface |
+| Backend | Node.js, Express.js | Authentication, users, jobs, and APIs |
+| Database | PostgreSQL | Persistent application data |
+| ML Service | Python, Flask, Scikit-learn | Recommendation generation |
 
 ### Why a separate ML microservice instead of doing this in Node?
 
@@ -138,9 +151,7 @@ Each word's weight reflects how **distinctive** it is — common words like "dev
 
 ### 4. Score with Cosine Similarity
 
-The user's vector is compared to every job's vector.
-
-The result is a score from **0 (unrelated) to 1 (near-identical)**.
+The user's vector is compared to every job's vector. The result is a score from **0 (unrelated) to 1 (near-identical)**.
 
 ### 5. Rank & explain
 
@@ -154,6 +165,75 @@ This powers the frontend explanation:
 
 It's explainable (every score traces back to real words), needs no training data, and is fast even with a small job catalog — deep learning models need much more data to beat a well-tuned TF-IDF baseline at this scale.
 
+### Example Recommendation
+
+For a Python/Backend-focused user, the recommendation system can produce results such as:
+
+| Rank | Job | Similarity | Matched Skills |
+|---|---|---|---|
+| 1 | Backend Developer | 0.53 | Python, SQL |
+| 2 | Junior Python Developer | 0.45 | Python, SQL |
+| 3 | Java Backend Engineer | 0.23 | SQL |
+| 4 | Data Analyst | 0.20 | Python, SQL |
+| 5 | Node.js Developer | 0.16 | None |
+
+The frontend displays both the similarity score and the matched skills to make each recommendation explainable.
+
+---
+
+## Recommendation Evaluation
+
+The recommendation system was evaluated with an automated Python experiment, implemented in [`ml-service/run_experiments.py`](./ml-service/run_experiments.py).
+
+**Evaluation dataset:** 3 test users, 10 job postings, K = 5, with manually labeled ground truth.
+
+Three approaches were compared:
+
+| Version | Approach | Precision@5 | Recall@5 |
+|---|---|---|---|
+| V1 | Keyword Matching | 53.33% | 91.67% |
+| V2 | TF-IDF + Cosine Similarity — Lean Profile (skills + preferred role) | **60.00%** | **100.00%** |
+| V3 | TF-IDF + Cosine Similarity — Full Profile (skills + role + education + bio) | 53.33% | 91.67% |
+
+**V1 → V2 improvement:**
+
+- Precision@5: 53.33% → 60.00% (+6.67 pp, 12.51% relative)
+- Recall@5: 91.67% → 100.00% (+8.33 pp, 9.09% relative)
+
+The **lean-profile TF-IDF configuration (V2)** performed best. Adding education and bio to the profile text (V3) did *not* improve results on this dataset — a useful illustration of why feature selection matters when building a content-based profile.
+
+Run it yourself:
+
+```bash
+cd ml-service
+python3 run_experiments.py
+```
+
+Example output:
+
+```text
+======================================================================
+AVERAGE METRICS ACROSS ALL TEST USERS (K=5)
+======================================================================
+Version                       Precision@5    Recall@5
+V1 - Keyword Matching         0.5333         0.9167
+V2 - TF-IDF (lean profile)    0.6000         1.0000
+V3 - TF-IDF (full profile)    0.5333         0.9167
+
+======================================================================
+IMPROVEMENT: V1 -> V2
+======================================================================
+Precision@5: 0.5333 -> 0.6
+Absolute improvement: 0.0667
+Relative improvement: 12.51%
+
+Recall@5:    0.9167 -> 1.0
+Absolute improvement: 0.0833
+Relative improvement: 9.09%
+```
+
+> **Evaluation limitation:** this is intentionally a small offline benchmark — 3 manually labeled user profiles and 10 job postings. These results demonstrate the relative behavior of the three approaches on this test set and should **not** be interpreted as a production-scale accuracy measurement. A larger set of real user profiles, job postings, and relevance judgments would give a more statistically meaningful evaluation.
+
 ---
 
 ## Getting Started
@@ -161,9 +241,9 @@ It's explainable (every score traces back to real words), needs no training data
 ### Option A — Docker Compose (recommended)
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Kumar9113/Job_Recommendation-Platform.git
 
-cd job-recommendation-platform
+cd Job_Recommendation-Platform
 
 docker compose up --build
 ```
@@ -203,7 +283,7 @@ npm start                # runs on :3000
 
 ---
 
-## Full curl walkthrough
+## Full Curl Walkthrough
 
 All commands below assume **Docker Compose** (backend on `5050`). If you're running the backend manually instead, swap `5050` for `5000`.
 
@@ -389,6 +469,19 @@ All protected routes require `Authorization: Bearer <JWT>`.
 | GET | `/api/recommendations?topK=5` | Yes | Get ranked job recommendations |
 | GET | `/api/recommendations/:jobId` | Yes | Explain why one job matches you |
 
+The ML service also exposes a simple health check:
+
+```
+GET /health
+```
+
+```json
+{
+  "service": "ml-service",
+  "status": "ok"
+}
+```
+
 ---
 
 ## Project Structure
@@ -419,7 +512,9 @@ job-recommendation-platform/
 ├── ml-service/
 │   └── Flask app
 │       ├── preprocessing.py
-│       └── recommendation engine
+│       ├── recommender.py
+│       ├── evaluation.py
+│       └── run_experiments.py
 │
 ├── database/
 │   ├── schema.sql
@@ -427,6 +522,17 @@ job-recommendation-platform/
 │
 └── docker-compose.yml
 ```
+
+---
+
+## Deployment
+
+The four services (frontend, backend, ML service, PostgreSQL) are designed to be deployed independently. Two deployment paths are provided in this repo:
+
+- **`render.yaml`** — a Render Blueprint that deploys the Flask ML service, Node/Express backend, and their environment variables as separate managed web services.
+- **[`DEPLOYMENT.md`](./DEPLOYMENT.md)** — a step-by-step guide to self-hosting all four services on a single VPS (DigitalOcean, Linode, AWS Lightsail, Hetzner, etc.) using the same `docker-compose.yml` you test with locally, plus notes on the required production changes (JWT secret, DB password, `REACT_APP_API_URL`, CORS, DB SSL).
+
+The system diagram at the top of this README illustrates the same request flow regardless of which platform each service ends up on.
 
 ---
 
@@ -444,6 +550,17 @@ See [`ROADMAP.md`](./ROADMAP.md) for the full phased plan with priorities.
 | 3 | Recruiter-side features (job posting UI, applicant tracking, roles) | Planned |
 | 4 | Production readiness (CI/CD, monitoring, deployment) | Planned |
 
+### Future Improvements
+
+- Expand the evaluation dataset beyond 3 manually labeled profiles
+- Evaluate against a larger set of job postings
+- Collect real user interaction data such as clicks, saves, and applications
+- Introduce hybrid collaborative + content-based recommendation
+- Tune TF-IDF parameters using a larger validation dataset
+- Add recommendation diversity and freshness
+- Automate larger-scale evaluation pipelines
+- Monitor recommendation quality over time
+
 ---
 
 ## Known Limitations
@@ -453,9 +570,18 @@ See [`ROADMAP.md`](./ROADMAP.md) for the full phased plan with priorities.
 - **Historical bug (fixed):** the ML service originally ran on port `6000`, which Node's `fetch` refuses to connect to (it's on the Fetch spec's blocked-ports list). Moved to `6100`.
 - No password reset / email verification flow yet.
 - No rate limiting on auth endpoints.
+- The current evaluation benchmark (3 users, 10 jobs) is small and offline — see [Recommendation Evaluation](#recommendation-evaluation) for details.
+
+---
+
+## Author
+
+**Kumar Gogula**
+M.Tech, Computer Science & Engineering — IIT Hyderabad
+GitHub: [Kumar9113](https://github.com/Kumar9113)
 
 ---
 
 ## License
 
-Internal / educational project — add a license here if open-sourcing.
+This project is intended for educational, research, and portfolio purposes. Add a formal license here if open-sourcing.
