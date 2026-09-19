@@ -1,3 +1,8 @@
+# ============================================================
+# Render Blueprint
+# Personalized Job Recommendation Platform
+# ============================================================
+
 services:
 
   # ==========================================================
@@ -33,32 +38,33 @@ services:
     plan: free
     region: singapore
 
+    healthCheckPath: /health
+
     envVars:
 
       # ------------------------------------------------------
       # Application
       # ------------------------------------------------------
-
       - key: NODE_ENV
         value: production
 
       - key: PORT
         value: "10000"
 
+
       # ------------------------------------------------------
       # JWT
       # ------------------------------------------------------
-
       - key: JWT_SECRET
         generateValue: true
 
       - key: JWT_EXPIRES_IN
         value: "7d"
 
+
       # ------------------------------------------------------
       # PostgreSQL
       # ------------------------------------------------------
-
       - key: DB_HOST
         fromDatabase:
           name: job-postgres
@@ -87,17 +93,21 @@ services:
       - key: DB_SSL
         value: "true"
 
+
       # ------------------------------------------------------
       # ML Service
       # ------------------------------------------------------
+      # Render private-network hostname + port
+      - key: ML_SERVICE_HOSTPORT
+        fromService:
+          name: job-ml-service
+          type: web
+          property: hostport
 
-      - key: ML_SERVICE_URL
-        value: "http://job-ml-service:6100"
 
       # ------------------------------------------------------
       # CORS
       # ------------------------------------------------------
-
       - key: ALLOWED_ORIGIN
         sync: false
 
@@ -118,6 +128,7 @@ services:
 
     envVars:
 
+      # Browser -> Backend
       - key: REACT_APP_API_URL
         sync: false
 
@@ -130,5 +141,6 @@ databases:
   - name: job-postgres
     plan: free
     region: singapore
+
     databaseName: job_recommendation_db
     user: jobapp
