@@ -1,0 +1,135 @@
+services:
+
+  # ==========================================================
+  # 1. PostgreSQL
+  # ==========================================================
+  - type: pserv
+    name: job-postgres
+    plan: free
+    region: singapore
+
+    databaseName: job_recommendation_db
+    databaseUser: jobapp
+
+
+  # ==========================================================
+  # 2. Flask ML Service
+  # ==========================================================
+  - type: web
+    name: job-ml-service
+
+    runtime: docker
+
+    rootDir: ml-service
+    dockerfilePath: ./Dockerfile
+
+    plan: free
+    region: singapore
+
+    envVars:
+
+      - key: PORT
+        value: "6100"
+
+
+  # ==========================================================
+  # 3. Node.js / Express Backend
+  # ==========================================================
+  - type: web
+    name: job-backend
+
+    runtime: docker
+
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+
+    plan: free
+    region: singapore
+
+    envVars:
+
+      # ------------------------------------------------------
+      # Application
+      # ------------------------------------------------------
+
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: "10000"
+
+      # ------------------------------------------------------
+      # JWT
+      # ------------------------------------------------------
+
+      - key: JWT_SECRET
+        generateValue: true
+
+      - key: JWT_EXPIRES_IN
+        value: "7d"
+
+      # ------------------------------------------------------
+      # PostgreSQL
+      # ------------------------------------------------------
+
+      - key: DB_HOST
+        fromDatabase:
+          name: job-postgres
+          property: host
+
+      - key: DB_PORT
+        fromDatabase:
+          name: job-postgres
+          property: port
+
+      - key: DB_USER
+        fromDatabase:
+          name: job-postgres
+          property: user
+
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: job-postgres
+          property: password
+
+      - key: DB_NAME
+        fromDatabase:
+          name: job-postgres
+          property: database
+
+      - key: DB_SSL
+        value: "true"
+
+      # ------------------------------------------------------
+      # ML Service
+      # ------------------------------------------------------
+
+      - key: ML_SERVICE_URL
+        value: "http://job-ml-service:6100"
+
+      # ------------------------------------------------------
+      # CORS
+      # ------------------------------------------------------
+
+      - key: ALLOWED_ORIGIN
+        sync: false
+
+
+  # ==========================================================
+  # 4. React Frontend
+  # ==========================================================
+  - type: web
+    name: job-frontend
+
+    runtime: docker
+
+    rootDir: frontend
+    dockerfilePath: ./Dockerfile
+
+    plan: free
+    region: singapore
+
+    envVars:
+
+      - key: REACT_APP_API_URL
+        sync: false
