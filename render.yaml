@@ -3,7 +3,7 @@ services:
   # ==========================================================
   # 1. Flask ML Service
   # ==========================================================
-  - type: pserv
+  - type: web
     name: job-ml-service
 
     runtime: docker
@@ -92,10 +92,7 @@ services:
       # ------------------------------------------------------
 
       - key: ML_SERVICE_URL
-        fromService:
-          type: pserv
-          name: job-ml-service
-          property: hostport
+        value: "http://job-ml-service:6100"
 
       # ------------------------------------------------------
       # CORS
