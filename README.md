@@ -1,4 +1,4 @@
-# 🎯 Personalized Job Recommendation Platform
+# Personalized Job Recommendation Platform
 
 A full-stack web platform that recommends jobs to users based on their skills, education, and preferences — using a **content-based ML recommendation engine** (TF-IDF + Cosine Similarity) served from a dedicated Python microservice.
 
@@ -6,28 +6,28 @@ A full-stack web platform that recommends jobs to users based on their skills, e
 
 ---
 
-## 📌 Table of Contents
+## Table of Contents
 
-- [Why This Project](#-why-this-project)
-- [How It Works](#-how-it-works)
-- [Architecture](#-architecture)
-- [Tech Stack](#-tech-stack)
-- [The Recommendation Engine, Explained](#-the-recommendation-engine-explained)
-- [Getting Started](#-getting-started)
-- [API Reference](#-api-reference)
-- [Project Structure](#-project-structure)
-- [Roadmap](#-roadmap)
-- [Known Limitations](#-known-limitations)
+- [Why This Project](#why-this-project)
+- [How It Works](#how-it-works)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [The Recommendation Engine, Explained](#the-recommendation-engine-explained)
+- [Getting Started](#getting-started)
+- [API Reference](#api-reference)
+- [Project Structure](#project-structure)
+- [Roadmap](#roadmap)
+- [Known Limitations](#known-limitations)
 
 ---
 
-## 💡 Why This Project
+## Why This Project
 
 Job boards usually make users do all the filtering work themselves. This platform flips that: a user builds a lightweight profile (skills, education, preferred role, bio) once, and the system **ranks every open job by how well it matches them** — with a plain-English explanation of *why* each job was recommended, not just a score.
 
 ---
 
-## ⚙️ How It Works
+## How It Works
 
 In one sentence: **a user's profile and every job posting are converted into text, turned into weighted word vectors (TF-IDF), and compared using cosine similarity — the closer two vectors point in the same direction, the better the match.**
 
@@ -42,7 +42,7 @@ Step by step, when a logged-in user opens their **Recommendations** page:
 
 ---
 
-## 🏗 Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -75,11 +75,11 @@ flowchart LR
 **Why a separate ML microservice instead of doing this in Node?**
 scikit-learn (TF-IDF, cosine similarity) is a mature Python ecosystem tool with no equivalent-quality library in Node. Splitting it out also means the ML logic can be redeployed, scaled, or swapped (e.g. for a smarter model later) independently of the main API.
 
-> ⚠️ **Port note:** the ML service runs on **6100**, not 6000. Port 6000 is on the [Fetch spec's blocked-ports list](https://fetch.spec.whatwg.org/#port-blocking) (reserved for X11), so Node's built-in `fetch` refuses to connect to it. This was an early bug in the project — see [Known Limitations](#-known-limitations).
+> **Port note:** the ML service runs on **6100**, not 6000. Port 6000 is on the [Fetch spec's blocked-ports list](https://fetch.spec.whatwg.org/#port-blocking) (reserved for X11), so Node's built-in `fetch` refuses to connect to it. This was an early bug in the project — see [Known Limitations](#known-limitations).
 
 ---
 
-## 🧰 Tech Stack
+## Tech Stack
 
 | Layer | Technology | Purpose |
 |---|---|---|
@@ -94,7 +94,7 @@ scikit-learn (TF-IDF, cosine similarity) is a mature Python ecosystem tool with 
 
 ---
 
-## 🧠 The Recommendation Engine, Explained
+## The Recommendation Engine, Explained
 
 This is a **content-based, unsupervised** recommender — no labeled training data ("user X liked job Y") is needed.
 
@@ -118,7 +118,7 @@ Jobs are sorted by score, the top-K returned, and each is annotated with which o
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Option A — Docker Compose (recommended)
 
@@ -161,71 +161,175 @@ npm install
 npm start                # runs on :3000
 ```
 
-### Quick smoke test (curl)
+### Full curl walkthrough (register, login, profile, skills, recommendations, apply)
+
+All commands below assume **Docker Compose** (backend on `5050`). If you're running the backend manually instead, swap `5050` for `5000`.
+
+Every protected endpoint needs `Authorization: Bearer $TOKEN`. Save the token from register/login into a shell variable so you don't have to paste it into every command:
 
 ```bash
-# Register
+TOKEN=$(curl -s -X POST http://localhost:5050/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"password123"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+echo $TOKEN
+```
+
+**1. Register a new user**
+```bash
 curl -s -X POST http://localhost:5050/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"you@example.com","password":"password123","fullName":"Your Name"}'
+```
 
-# Add a skill (replace $TOKEN with the token from register/login)
+**2. Log in** (if you already have an account)
+```bash
+curl -s -X POST http://localhost:5050/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"password123"}'
+```
+
+**3. Get your profile**
+```bash
+curl -s http://localhost:5050/api/users/me \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**4. Update your profile**
+```bash
+curl -s -X PUT http://localhost:5050/api/users/me \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d '{"education":"BTech","experienceYears":1.5,"preferredRole":"Backend Developer","location":"Hyderabad","bio":"Backend developer who loves Python and SQL."}'
+```
+
+**5. List master skills**
+```bash
+curl -s http://localhost:5050/api/skills
+```
+
+**6. Add a skill to your profile**
+```bash
 curl -s -X POST http://localhost:5050/api/users/skills \
   -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
   -d '{"skillName":"Python"}'
 
-# Get recommendations
+curl -s -X POST http://localhost:5050/api/users/skills \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d '{"skillName":"SQL"}'
+```
+
+**7. Remove a skill** (replace `:skillId` with the `skillId` returned from step 6)
+```bash
+curl -s -X DELETE http://localhost:5050/api/users/skills/1 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**8. Search / browse jobs**
+```bash
+curl -s "http://localhost:5050/api/jobs?limit=5"
+
+# with filters
+curl -s "http://localhost:5050/api/jobs?skill=Python&location=Hyderabad&minExperience=0&page=1&limit=5"
+```
+
+**9. Get one job's details**
+```bash
+curl -s http://localhost:5050/api/jobs/1
+```
+
+**10. Get ranked recommendations**
+```bash
 curl -s "http://localhost:5050/api/recommendations?topK=5" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
+**11. Explain why one job matches you**
+```bash
+curl -s http://localhost:5050/api/recommendations/1 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**12. Apply to a job**
+```bash
+curl -s -X POST http://localhost:5050/api/jobs/1/apply \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**13. List your applications**
+```bash
+curl -s http://localhost:5050/api/applications \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**14. Update an application's status** (replace `:id` with the application `id` from step 13)
+```bash
+curl -s -X PUT http://localhost:5050/api/applications/1 \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d '{"status":"shortlisted"}'
+```
+
+Valid `status` values: `applied`, `shortlisted`, `rejected`, `hired` (check `applications.controller.js` if this list has changed).
+
+**Expected error responses**, useful when testing:
+
+| Scenario | Status |
+|---|---|
+| Register with an email already in use | `409 Conflict` |
+| Register with password under 6 chars | `400 Bad Request` |
+| Login with wrong password | `401 Unauthorized` |
+| Any protected route with no/invalid token | `401 Unauthorized` |
+| Apply to a job twice | `409 Conflict` |
+| Apply to a non-existent job id | `404 Not Found` |
+| Update application status to an invalid value | `400 Bad Request` |
+
 ---
 
-## 📡 API Reference
+## API Reference
 
 All protected routes require `Authorization: Bearer <JWT>`.
 
 | Method | Endpoint | Auth | Description |
 |---|---|:---:|---|
-| POST | `/api/auth/register` | ❌ | Create account, returns JWT |
-| POST | `/api/auth/login` | ❌ | Login, returns JWT |
-| GET | `/api/users/me` | ✅ | Get profile + skills |
-| PUT | `/api/users/me` | ✅ | Update profile fields |
-| GET | `/api/skills` | ❌ | List master skills |
-| POST | `/api/users/skills` | ✅ | Add a skill to your profile |
-| DELETE | `/api/users/skills/:skillId` | ✅ | Remove a skill |
-| GET | `/api/jobs` | ❌ | Search jobs (`skill`, `title`, `location`, `minExperience`, `page`, `limit`, `sort`) |
-| GET | `/api/jobs/:id` | ❌ | Job details + required skills |
-| POST | `/api/jobs` | — | Create a job (admin) |
-| PUT | `/api/jobs/:id` | — | Update a job (admin) |
-| DELETE | `/api/jobs/:id` | — | Delete a job (admin) |
-| POST | `/api/jobs/:id/apply` | ✅ | Apply to a job |
-| GET | `/api/applications` | ✅ | List your applications |
-| PUT | `/api/applications/:id` | ✅ | Update application status (recruiter) |
-| GET | `/api/recommendations?topK=5` | ✅ | Get ranked job recommendations |
-| GET | `/api/recommendations/:jobId` | ✅ | Explain why one job matches you |
+| POST | `/api/auth/register` | No | Create account, returns JWT |
+| POST | `/api/auth/login` | No | Login, returns JWT |
+| GET | `/api/users/me` | Yes | Get profile + skills |
+| PUT | `/api/users/me` | Yes | Update profile fields |
+| GET | `/api/skills` | No | List master skills |
+| POST | `/api/users/skills` | Yes | Add a skill to your profile |
+| DELETE | `/api/users/skills/:skillId` | Yes | Remove a skill |
+| GET | `/api/jobs` | No | Search jobs (`skill`, `title`, `location`, `minExperience`, `page`, `limit`, `sort`) |
+| GET | `/api/jobs/:id` | No | Job details + required skills |
+| POST | `/api/jobs` | Admin | Create a job |
+| PUT | `/api/jobs/:id` | Admin | Update a job |
+| DELETE | `/api/jobs/:id` | Admin | Delete a job |
+| POST | `/api/jobs/:id/apply` | Yes | Apply to a job |
+| GET | `/api/applications` | Yes | List your applications |
+| PUT | `/api/applications/:id` | Yes | Update application status (recruiter) |
+| GET | `/api/recommendations?topK=5` | Yes | Get ranked job recommendations |
+| GET | `/api/recommendations/:jobId` | Yes | Explain why one job matches you |
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 job-recommendation-platform/
-├── frontend/            # React app (Login, Register, Dashboard, JobSearch, JobDetails, Applications, Recommendations)
-├── backend/              # Express API (auth, jobs, applications, recommendations, skills)
+├── frontend/            React app (Login, Register, Dashboard, JobSearch, JobDetails, Applications, Recommendations)
+├── backend/              Express API (auth, jobs, applications, recommendations, skills)
 │   └── src/
-│       ├── controllers/  # Business logic per resource
-│       ├── routes/       # Route definitions
-│       ├── middleware/   # auth, error handling
-│       └── services/     # mlService.js — the only file that talks to the ML microservice
-├── ml-service/           # Flask app: preprocessing → TF-IDF → cosine similarity
-├── database/             # schema.sql + seed.sql
-└── docker-compose.yml    # Wires all 4 services together
+│       ├── controllers/  Business logic per resource
+│       ├── routes/       Route definitions
+│       ├── middleware/   auth, error handling
+│       └── services/     mlService.js — the only file that talks to the ML microservice
+├── ml-service/           Flask app: preprocessing -> TF-IDF -> cosine similarity
+├── database/             schema.sql + seed.sql
+└── docker-compose.yml    Wires all 4 services together
 ```
 
 ---
 
-## 🗺 Roadmap
+## Roadmap
 
 See [`ROADMAP.md`](./ROADMAP.md) for the full phased plan with priorities.
 
@@ -233,15 +337,15 @@ See [`ROADMAP.md`](./ROADMAP.md) for the full phased plan with priorities.
 
 | Phase | Focus | Status |
 |---|---|---|
-| 0 | Core platform (auth, jobs, applications, TF-IDF recommendations) | ✅ Done |
-| 1 | Hardening (ownership checks, dedup, rate limiting, validation) | 🔜 Next |
-| 2 | Smarter recommendations (weighted skills, experience matching, feedback loop) | 📋 Planned |
-| 3 | Recruiter-side features (job posting UI, applicant tracking, roles) | 📋 Planned |
-| 4 | Production readiness (CI/CD, monitoring, deployment) | 📋 Planned |
+| 0 | Core platform (auth, jobs, applications, TF-IDF recommendations) | Done |
+| 1 | Hardening (ownership checks, dedup, rate limiting, validation) | Next |
+| 2 | Smarter recommendations (weighted skills, experience matching, feedback loop) | Planned |
+| 3 | Recruiter-side features (job posting UI, applicant tracking, roles) | Planned |
+| 4 | Production readiness (CI/CD, monitoring, deployment) | Planned |
 
 ---
 
-## ⚠️ Known Limitations
+## Known Limitations
 
 - **`PUT /api/applications/:id`** currently has no ownership/role check — any authenticated user can update any application's status. There's no recruiter role yet in the schema.
 - **`recommendations` table grows unbounded** — every call to `GET /api/recommendations` inserts new rows with no dedup or cleanup.
@@ -251,7 +355,6 @@ See [`ROADMAP.md`](./ROADMAP.md) for the full phased plan with priorities.
 
 ---
 
-## 📄 License
+## License
 
 Internal / educational project — add a license here if open-sourcing.
-# Job_Recommendation-Platform
